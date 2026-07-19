@@ -5,9 +5,15 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "jupyter>=1.1.1",
+    "httpx>=0.28.0",
+    "beautifulsoup4>=4.15.0",
     "minsearch>=0.2.0",
-    "openai>=2.46.0",
-    "python-dotenv>=1.2.2",
-    "requests>=2.34.2",
+    "sentence-transformers>=3.0.0",
+    "numpy>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-mock>=3.14.0",
 ]

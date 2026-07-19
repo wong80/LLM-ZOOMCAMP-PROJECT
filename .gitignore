@@ -1,0 +1,14 @@
+.env
+.venv
+learning material/
+notebooks/
+.pytest_cache
+tests/
+PLAN.md
+__pycache__/
+*.pyc
+*.egg-info/
+data/processed/
+data/raw/
+get-pip.py
+*.ipynb
