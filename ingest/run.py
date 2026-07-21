@@ -75,8 +75,8 @@ def main():
     parser = argparse.ArgumentParser(description="Ingest Python library documentation")
     parser.add_argument("--library", default="fastapi", choices=list(SITEMAP_MAP.keys()),
                         help="Library to ingest")
-    parser.add_argument("--no-overlap", action="store_false", dest="overlap",
-                        help="Disable overlapping chunks")
+    parser.add_argument("--overlap", action="store_true", default=True,
+                        help="Enable overlapping chunks (default: on)")
     args = parser.parse_args()
     result = ingest_library(library_name=args.library, overlap=args.overlap)
     print(f"\nSummary: {result['total_chunks']} chunks from {result['num_pages_scraped']} pages")

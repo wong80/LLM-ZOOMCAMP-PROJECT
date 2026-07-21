@@ -79,15 +79,7 @@ def get_conversation(conn, conversation_id: str) -> dict | None:
         row = cur.fetchone()
     if row is None:
         return None
-    if hasattr(row, "keys"):
-        return dict(row)
-    COLUMNS = [
-        "id", "question", "answer", "model_used", "response_time",
-        "relevance", "prompt_tokens", "completion_tokens", "total_tokens",
-        "eval_prompt_tokens", "eval_completion_tokens", "eval_total_tokens",
-        "openai_cost", "timestamp",
-    ]
-    return dict(zip(COLUMNS, row))
+    return dict(row)
 
 
 def save_feedback(conn, conversation_id: str, feedback: int):

@@ -34,7 +34,7 @@ def save_minsearch_index(index: Index, library_name: str) -> str:
     return path
 
 
-def load_minsearch_index(library_name: str) -> Optional[Index]:
+def load_minsearch_index(library_name: str = "fastapi") -> Optional[Index]:
     """Load a minsearch index from disk, or None."""
     path = f"data/processed/{library_name}/minsearch.pkl"
     if not os.path.exists(path):

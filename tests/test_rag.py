@@ -31,7 +31,7 @@ class TestBuildPrompt:
 class TestRagFlow:
     def test_rag_returns_expected_keys(self, mocker):
         from app.rag import rag
-        mocker.patch("app.rag.search", return_value=[{"id": "c1", "url": "https://e.com/"}])
+        mocker.patch("app.rag.hybrid_search", return_value=[{"id": "c1", "url": "https://e.com/"}])
         mocker.patch("app.rag.build_prompt", return_value="test prompt")
         mocker.patch("app.rag.llm", return_value=("test answer", {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}))
         mocker.patch("app.rag.evaluate_relevance", return_value=("RELEVANT", {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}))
@@ -47,7 +47,7 @@ class TestRagFlow:
     def test_rag_citations_match_search_results(self, mocker):
         from app.rag import rag
         expected_citations = [{"id": "c1", "url": "https://e1.com/"}, {"id": "c2", "url": "https://e2.com/"}]
-        mocker.patch("app.rag.search", return_value=expected_citations)
+        mocker.patch("app.rag.hybrid_search", return_value=expected_citations)
         mocker.patch("app.rag.build_prompt", return_value="prompt")
         mocker.patch("app.rag.llm", return_value=("answer", {"total_tokens": 10}))
         mocker.patch("app.rag.evaluate_relevance", return_value=("RELEVANT", {"total_tokens": 5}))
@@ -57,7 +57,7 @@ class TestRagFlow:
 
     def test_rag_response_time_is_positive(self, mocker):
         from app.rag import rag
-        mocker.patch("app.rag.search", return_value=[{"id": "c1", "url": "https://e.com/"}])
+        mocker.patch("app.rag.hybrid_search", return_value=[{"id": "c1", "url": "https://e.com/"}])
         mocker.patch("app.rag.build_prompt", return_value="prompt")
         mocker.patch("app.rag.llm", return_value=("answer", {"total_tokens": 10}))
         mocker.patch("app.rag.evaluate_relevance", return_value=("RELEVANT", {"total_tokens": 5}))

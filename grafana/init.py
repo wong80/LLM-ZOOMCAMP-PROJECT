@@ -1,5 +1,3 @@
-"""Provision Grafana with PostgreSQL datasource and import dashboard."""
-
 import json
 import os
 
@@ -11,9 +9,7 @@ GRAFANA_PASSWORD = os.getenv("GRAFANA_PASSWORD", "admin")
 
 
 def _client(api_client=None):
-    if api_client is not None:
-        return api_client
-    return httpx.Client(auth=(GRAFANA_USER, GRAFANA_PASSWORD), base_url=GRAFANA_URL)
+    return api_client or httpx.Client(auth=(GRAFANA_USER, GRAFANA_PASSWORD), base_url=GRAFANA_URL)
 
 
 def _datasource_payload() -> dict:
@@ -55,7 +51,3 @@ def provision():
     create_postgres_datasource()
     import_dashboard()
     print("Grafana datasource and dashboard provisioned.")
-
-
-if __name__ == "__main__":
-    provision()

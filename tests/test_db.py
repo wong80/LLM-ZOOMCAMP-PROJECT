@@ -58,7 +58,7 @@ class TestConversationCrud:
         }
         save_conversation(db_connection, conv)
         cursor = db_connection.cursor()
-        cursor.fetchone.return_value = tuple(conv.get(c) for c in ALL_COLUMNS)
+        cursor.fetchone.return_value = conv
         retrieved = get_conversation(db_connection, "test-1")
         for col in ALL_COLUMNS:
             assert col in retrieved, f"Missing key: {col}"

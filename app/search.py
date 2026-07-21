@@ -1,29 +1,22 @@
 """Hybrid search: keyword (minsearch), vector (semantic), and RRF fusion."""
 
+import functools
+
 import numpy as np
 from minsearch import Index
 from sentence_transformers import SentenceTransformer
-from typing import Optional
 
 from ingest.index import load_minsearch_index, EMBEDDING_MODEL_NAME
 
 RRF_K = 60
 
-_embedding_model: Optional[SentenceTransformer] = None
 
-
+@functools.cache
 def _get_embedder() -> SentenceTransformer:
-    global _embedding_model
-    if _embedding_model is None:
-        _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-    return _embedding_model
+    return SentenceTransformer(EMBEDDING_MODEL_NAME)
 
 
-def _load_default_index(library: str = "fastapi") -> Optional[Index]:
-    return load_minsearch_index(library)
-
-
-def _load_default_embeddings(library: str = "fastapi") -> Optional[tuple[np.ndarray, list[dict]]]:
+def _load_default_embeddings(library: str = "fastapi") -> tuple[np.ndarray, list[dict]] | None:
     import json, os
     emb_path = f"data/processed/{library}/embeddings.npy"
     meta_path = f"data/processed/{library}/chunks.json"
@@ -34,14 +27,14 @@ def _load_default_embeddings(library: str = "fastapi") -> Optional[tuple[np.ndar
 
 def keyword_search(
     query: str,
-    index: Optional[Index] = None,
+    index: Index | None = None,
     num_results: int = 5,
-    boost_dict: Optional[dict] = None,
+    boost_dict: dict | None = None,
 ) -> list[dict]:
     if not query.strip():
         return []
     if index is None:
-        index = _load_default_index()
+        index = load_minsearch_index()
     if index is None:
         return []
     return index.search(query, num_results=num_results, boost_dict=boost_dict or {})
@@ -49,10 +42,10 @@ def keyword_search(
 
 def vector_search(
     query: str,
-    embeddings: Optional[np.ndarray] = None,
-    chunks: Optional[list[dict]] = None,
+    embeddings: np.ndarray | None = None,
+    chunks: list[dict] | None = None,
     num_results: int = 5,
-    model: Optional[SentenceTransformer] = None,
+    model: SentenceTransformer | None = None,
 ) -> list[dict]:
     if not query.strip():
         return []
@@ -72,11 +65,11 @@ def vector_search(
 def hybrid_search(
     query: str,
     method: str = "hybrid",
-    index: Optional[Index] = None,
-    embeddings: Optional[np.ndarray] = None,
-    chunks: Optional[list[dict]] = None,
+    index: Index | None = None,
+    embeddings: np.ndarray | None = None,
+    chunks: list[dict] | None = None,
     num_results: int = 5,
-    model: Optional[SentenceTransformer] = None,
+    model: SentenceTransformer | None = None,
 ) -> list[dict]:
     if method == "keyword":
         return keyword_search(query, index=index, num_results=num_results)
@@ -89,13 +82,7 @@ def hybrid_search(
     raise ValueError(f"Unknown method: {method}. Use 'keyword', 'vector', or 'hybrid'.")
 
 
-def search(query: str, method: str = "hybrid", num_results: int = 5) -> list[dict]:
-    """Convenience wrapper around hybrid_search."""
-    return hybrid_search(query, method=method, num_results=num_results)
-
-
 def _rrf_fuse(kw_results: list[dict], vec_results: list[dict], num_results: int) -> list[dict]:
-    """Reciprocal Rank Fusion of keyword and vector results."""
     scores: dict[str, float] = {}
     chunk_map: dict[str, dict] = {}
     for rank, r in enumerate(kw_results, start=1):
@@ -136,15 +123,10 @@ def rewrite_query(query: str, method: str = "direct") -> str:
     return q if q != query.lower() else query
 
 
-_reranker = None
-
-
+@functools.cache
 def _get_reranker():
-    global _reranker
-    if _reranker is None:
-        from sentence_transformers import CrossEncoder
-        _reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
-    return _reranker
+    from sentence_transformers import CrossEncoder
+    return CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
 
 def rerank(query: str, chunks: list[dict]) -> list[dict]:

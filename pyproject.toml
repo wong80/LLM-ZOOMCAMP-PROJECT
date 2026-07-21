@@ -17,12 +17,6 @@ dependencies = [
     "psycopg2-binary>=2.9.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-mock>=3.14.0",
-]
-
 [tool.pytest.ini_options]
 markers = [
     "integration: marks tests that require real services (PostgreSQL, Grafana)",

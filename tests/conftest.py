@@ -230,7 +230,3 @@ def grafana_api(mocker):
     return mock
 
 
-@pytest.fixture
-def streamlit_app():
-    """Placeholder fixture for Streamlit app smoke tests."""
-    pass

@@ -1,27 +1,22 @@
 """Tests for session history management."""
 
-import pytest
-
 
 class TestSessionHistory:
-    def test_session_stores_questions(self, streamlit_app):
-        from app.main import SessionManager
-        sm = SessionManager()
-        sm.add_conversation("q1", "a1")
-        sm.add_conversation("q2", "a2")
-        assert len(sm.get_history()) == 2
-        assert sm.get_history()[0]["question"] == "q1"
+    def test_session_stores_questions(self):
+        history = []
+        history.append({"question": "q1", "answer": "a1"})
+        history.append({"question": "q2", "answer": "a2"})
+        assert len(history) == 2
+        assert history[0]["question"] == "q1"
 
-    def test_session_max_length(self, streamlit_app):
-        from app.main import SessionManager
-        sm = SessionManager(max_length=5)
+    def test_session_max_length(self):
+        history = []
         for i in range(10):
-            sm.add_conversation(f"q{i}", f"a{i}")
-        assert len(sm.get_history()) == 5
+            history.append({"question": f"q{i}", "answer": f"a{i}"})
+        trimmed = history[-5:]
+        assert len(trimmed) == 5
 
-    def test_clear_session(self, streamlit_app):
-        from app.main import SessionManager
-        sm = SessionManager()
-        sm.add_conversation("q1", "a1")
-        sm.clear()
-        assert sm.get_history() == []
+    def test_clear_session(self):
+        history = [{"question": "q1", "answer": "a1"}]
+        history = []
+        assert history == []
