@@ -262,7 +262,7 @@ Access:
 | Hybrid search (bonus) | +1 | `app/search.py` — keyword, vector, hybrid functions |
 | Reranking (bonus) | +1 | `app/search.py` — cross-encoder rerank function |
 | Query rewriting (bonus) | +1 | `app/search.py` — query rewrite function |
-| **Total** | **26** | |
+| **Total** | **21** | |
 
 ---
 
