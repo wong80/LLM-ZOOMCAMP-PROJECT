@@ -36,6 +36,7 @@ def keyword_search(
     query: str,
     index: Optional[Index] = None,
     num_results: int = 5,
+    boost_dict: Optional[dict] = None,
 ) -> list[dict]:
     if not query.strip():
         return []
@@ -43,7 +44,7 @@ def keyword_search(
         index = _load_default_index()
     if index is None:
         return []
-    return index.search(query, num_results=num_results)
+    return index.search(query, num_results=num_results, boost_dict=boost_dict or {})
 
 
 def vector_search(

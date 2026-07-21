@@ -10,10 +10,19 @@ dependencies = [
     "minsearch>=0.2.0",
     "sentence-transformers>=3.0.0",
     "numpy>=2.0.0",
+    "openai>=1.0.0",
+    "pandas>=2.0.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
     "pytest-mock>=3.14.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-mock>=3.15.1",
 ]
