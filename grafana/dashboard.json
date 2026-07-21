@@ -1,0 +1,57 @@
+{
+  "dashboard": {
+    "title": "PyDoc Assistant Monitoring",
+    "uid": "pydoc-assistant",
+    "timezone": "utc",
+    "panels": [
+      {
+        "datasource": {"type": "postgres", "uid": "pydoc-pg"},
+        "id": 1,
+        "type": "timeseries",
+        "title": "Questions per Hour",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [{"rawSql": "SELECT date_trunc('hour', timestamp) AS time, count(*) AS value FROM conversations GROUP BY time ORDER BY time", "format": "time_series"}]
+      },
+      {
+        "datasource": {"type": "postgres", "uid": "pydoc-pg"},
+        "id": 2,
+        "type": "piechart",
+        "title": "Relevance Distribution",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [{"rawSql": "SELECT relevance AS metric, count(*) AS value FROM conversations GROUP BY relevance", "format": "table"}]
+      },
+      {
+        "datasource": {"type": "postgres", "uid": "pydoc-pg"},
+        "id": 3,
+        "type": "stat",
+        "title": "Avg Response Time",
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+        "targets": [{"rawSql": "SELECT avg(response_time) AS value FROM conversations", "format": "table"}]
+      },
+      {
+        "datasource": {"type": "postgres", "uid": "pydoc-pg"},
+        "id": 4,
+        "type": "timeseries",
+        "title": "Cost over Time",
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+        "targets": [{"rawSql": "SELECT date_trunc('hour', timestamp) AS time, sum(openai_cost) AS value FROM conversations GROUP BY time ORDER BY time", "format": "time_series"}]
+      },
+      {
+        "datasource": {"type": "postgres", "uid": "pydoc-pg"},
+        "id": 5,
+        "type": "barchart",
+        "title": "Feedback Ratio",
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+        "targets": [{"rawSql": "SELECT CASE WHEN feedback=1 THEN 'Thumbs Up' ELSE 'Thumbs Down' END AS metric, count(*) AS value FROM feedback GROUP BY feedback", "format": "table"}]
+      },
+      {
+        "datasource": {"type": "postgres", "uid": "pydoc-pg"},
+        "id": 6,
+        "type": "table",
+        "title": "Model Comparison",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+        "targets": [{"rawSql": "SELECT model_used, count(*) AS queries, avg(response_time) AS avg_response_time FROM conversations GROUP BY model_used", "format": "table"}]
+      }
+    ]
+  }
+}
