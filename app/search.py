@@ -113,3 +113,45 @@ def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     a_norm = a / np.linalg.norm(a, axis=1, keepdims=True).clip(min=1e-12)
     b_norm = b / np.linalg.norm(b, axis=1, keepdims=True).clip(min=1e-12)
     return a_norm @ b_norm.T
+
+
+_ABBREVIATIONS = {
+    "dep inj": "dependency injection",
+    "path op": "path operation",
+    "req": "request",
+    "resp": "response",
+    "val": "validation",
+}
+
+
+def rewrite_query(query: str, method: str = "direct") -> str:
+    if method == "llm":
+        from app.llm import llm
+        prompt = f"Rewrite this developer question to be more searchable:\n{query}"
+        result, _ = llm(prompt, model="gpt-4o-mini")
+        return result
+    q = query.lower()
+    for abbr, full in _ABBREVIATIONS.items():
+        q = q.replace(abbr, full)
+    return q if q != query.lower() else query
+
+
+_reranker = None
+
+
+def _get_reranker():
+    global _reranker
+    if _reranker is None:
+        from sentence_transformers import CrossEncoder
+        _reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+    return _reranker
+
+
+def rerank(query: str, chunks: list[dict]) -> list[dict]:
+    if not chunks:
+        return []
+    pairs = [(query, c["content"]) for c in chunks]
+    scores = _get_reranker().predict(pairs)
+    scored = list(zip(chunks, scores))
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [c for c, _ in scored]

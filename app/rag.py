@@ -1,7 +1,7 @@
 """RAG flow: search → build prompt → LLM → answer with citations."""
 
 import time
-from app.search import search
+from app.search import search, rewrite_query, rerank, hybrid_search
 from app.llm import llm, calculate_cost
 from app.evaluation import evaluate_relevance
 
@@ -43,6 +43,29 @@ def rag(query: str, model: str = "gpt-4o-mini") -> dict:
         "model": model,
         "response_time": t1 - t0,
         "relevance": relevance,
+        **token_stats,
+        "eval_tokens": eval_tokens,
+        "cost": calculate_cost(model, token_stats) + calculate_cost(model, eval_tokens),
+    }
+
+
+def rag_with_bonuses(query: str, model: str = "gpt-4o-mini") -> dict:
+    t0 = time.time()
+    q = rewrite_query(query)
+    chunks = hybrid_search(q, num_results=20)
+    chunks = rerank(q, chunks)[:5]
+    prompt = build_prompt(q, chunks)
+    answer, token_stats = llm(prompt, model)
+    relevance, eval_tokens = evaluate_relevance(query, answer)
+    t1 = time.time()
+
+    return {
+        "answer": answer,
+        "citations": [c["url"] for c in chunks],
+        "model": model,
+        "response_time": t1 - t0,
+        "relevance": relevance,
+        "rewritten_query": q,
         **token_stats,
         "eval_tokens": eval_tokens,
         "cost": calculate_cost(model, token_stats) + calculate_cost(model, eval_tokens),

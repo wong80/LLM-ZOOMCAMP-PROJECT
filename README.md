@@ -107,15 +107,14 @@ Python developers frequently consult library documentation (FastAPI, Pydantic, R
 ├── app/                        # Application code
 │   ├── main.py                 # Streamlit entry point
 │   ├── rag.py                  # RAG flow (retrieve → prompt → LLM → answer)
-│   ├── search.py               # Hybrid search (keyword, vector, RRF fusion)
+│   ├── search.py               # Hybrid search (keyword, vector, RRF fusion, query rewrite, rerank)
 │   ├── llm.py                  # OpenAI LLM client
-│   ├── db.py                   # PostgreSQL client (conversations + feedback)
-│   └── config.py               # Configuration / constants
+│   └── db.py                   # PostgreSQL client (conversations + feedback)
 │
 ├── ingest/                     # Data ingestion pipeline
 │   ├── scrape.py               # Sitemap discovery + HTML scraping
 │   ├── chunk.py                # Section-heading chunking logic
-│   ├── embed.py                # Embedding generation + vector index build
+│   ├── index.py                # Embedding generation + vector index build + minsearch index
 │   └── run.py                  # Orchestration: scrape → chunk → index
 │
 ├── notebooks/                  # Evaluation notebooks
@@ -204,10 +203,10 @@ Access:
 
 | Strategy | Hit Rate | MRR |
 |----------|----------|-----|
-| Keyword only (no boost) | X.XX | X.XX |
-| Keyword only (optimized boost) | X.XX | X.XX |
-| Vector only | X.XX | X.XX |
-| Hybrid (keyword + vector, RRF) | X.XX | X.XX |
+| Keyword only (no boost) | 0.600 | 0.431 |
+| Keyword only (optimized boost) | **0.820** | **0.525** |
+| Vector only | 0.420 | 0.314 |
+| Hybrid (keyword + vector, RRF) | 0.660 | 0.419 |
 
 **Boost optimization:** Random search over field weights (0.0–3.0), 30 iterations, maximizing hit rate on validation set.
 
@@ -217,8 +216,8 @@ Access:
 
 | Model | % RELEVANT | % PARTLY | % NON | Cost per 1K queries |
 |-------|-----------|----------|-------|-------------------|
-| gpt-4o-mini | XX% | XX% | XX% | $X.XX |
-| gpt-4o | XX% | XX% | XX% | $X.XX |
+| gpt-4o-mini | 100.00% | 0.00% | 0.00% | $0.39 |
+| gpt-4o | 66.67% | 33.33% | 0.00% | $4.60 |
 
 ---
 
