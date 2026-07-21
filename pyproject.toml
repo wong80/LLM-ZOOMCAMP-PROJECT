@@ -13,12 +13,19 @@ dependencies = [
     "openai>=1.0.0",
     "pandas>=2.0.0",
     "python-dotenv>=1.0.0",
+    "streamlit>=1.40.0",
+    "psycopg2-binary>=2.9.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
     "pytest-mock>=3.14.0",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests that require real services (PostgreSQL, Grafana)",
 ]
 
 [dependency-groups]
