@@ -12,3 +12,6 @@ data/processed/
 data/raw/
 get-pip.py
 *.ipynb
+
+get-pip.py
+main.py
