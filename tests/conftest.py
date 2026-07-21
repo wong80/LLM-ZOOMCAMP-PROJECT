@@ -1,9 +1,29 @@
 """Shared pytest fixtures."""
 
+from datetime import datetime, timezone
+
 import pytest
 import numpy as np
 from minsearch import Index
 from sentence_transformers import SentenceTransformer
+
+
+BASE_CONV = {
+    "id": "test-conv",
+    "question": "What is FastAPI?",
+    "answer": "FastAPI is a web framework.",
+    "model_used": "gpt-4o-mini",
+    "response_time": 1.5,
+    "relevance": "RELEVANT",
+    "prompt_tokens": 50,
+    "completion_tokens": 30,
+    "total_tokens": 80,
+    "eval_prompt_tokens": 10,
+    "eval_completion_tokens": 5,
+    "eval_total_tokens": 15,
+    "openai_cost": 0.001,
+    "timestamp": datetime.now(timezone.utc),
+}
 
 
 @pytest.fixture
@@ -163,3 +183,54 @@ def mock_openai_client(mocker):
     mock_client.responses.create.side_effect = side_effect
     mocker.patch("app.llm.OpenAI", return_value=mock_client)
     return mock_client
+
+
+@pytest.fixture
+def db_connection(mocker):
+    """Mock psycopg2 connection for unit tests."""
+    mock_conn = mocker.MagicMock()
+    mock_cursor = mocker.MagicMock()
+    mock_cursor.fetchone.return_value = None
+    _last_query = [None]
+    def _execute(sql, *a, **kw):
+        _last_query[0] = sql
+    mock_cursor.execute.side_effect = _execute
+    columns_by_table = {
+        "conversations": [
+            ("id", "text"), ("question", "text"), ("answer", "text"),
+            ("model_used", "text"), ("response_time", "float"),
+            ("relevance", "text"), ("prompt_tokens", "integer"),
+            ("completion_tokens", "integer"), ("total_tokens", "integer"),
+            ("eval_prompt_tokens", "integer"), ("eval_completion_tokens", "integer"),
+            ("eval_total_tokens", "integer"), ("openai_cost", "float"),
+            ("timestamp", "timestamp with time zone"),
+        ],
+        "feedback": [
+            ("id", "integer"), ("conversation_id", "text"),
+            ("feedback", "integer"), ("timestamp", "timestamp with time zone"),
+        ],
+    }
+    def _fetchall():
+        sql = (_last_query[0] or "").lower()
+        for table, cols in columns_by_table.items():
+            if table in sql:
+                return cols
+        return []
+    mock_cursor.fetchall.side_effect = _fetchall
+    mock_conn.cursor.return_value = mock_cursor
+    mock_cursor.__enter__.return_value = mock_cursor
+    return mock_conn
+
+
+@pytest.fixture
+def grafana_api(mocker):
+    """Mock httpx client for Grafana API calls."""
+    mock = mocker.MagicMock()
+    mock.__enter__.return_value = mock
+    return mock
+
+
+@pytest.fixture
+def streamlit_app():
+    """Placeholder fixture for Streamlit app smoke tests."""
+    pass
