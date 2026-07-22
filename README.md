@@ -14,16 +14,12 @@ Built as the capstone project for [DataTalks.Club LLM Zoomcamp 2026](https://git
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [End-to-End Setup & Usage](#end-to-end-setup--usage)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Step 1: Ingest Documentation](#step-1-ingest-documentation)
-  - [Step 2: Run the App](#step-2-run-the-app)
-  - [Step 3: Run Evaluation](#step-3-run-evaluation)
-  - [Step 4: Run Tests](#step-4-run-tests)
-- [Running with Docker](#running-with-docker)
-- [What to Expect](#what-to-expect)
-  - [App Behavior](#app-behavior)
-  - [Database & Monitoring](#database--monitoring)
+  - [Before You Start](#before-you-start)
+  - [Installation](#installation-both-paths)
+  - [Option A — Full Experience (Docker)](#option-a-recommended--full-experience-with-docker)
+  - [Option B — App Only (Manual)](#option-b--app-only-no-docker)
+  - [Run Evaluation](#step-after-both-paths-run-evaluation)
+  - [Run Tests](#final-step-run-tests)
 - [Evaluation Results](#evaluation-results)
   - [Retrieval Metrics](#retrieval-metrics)
   - [LLM Output Evaluation](#llm-output-evaluation)
@@ -191,75 +187,89 @@ Python developers frequently consult library documentation (FastAPI, Pydantic, R
 
 ## End-to-End Setup & Usage
 
-### Prerequisites
+### Before You Start
 
-- Python 3.12
-- `uv` package manager ([install guide](https://docs.astral.sh/uv/#installation))
-- An OpenAI API key with access to `gpt-4o-mini` and optionally `gpt-4o`
+| Requirement | How to Get It |
+|-------------|---------------|
+| Python 3.12 | `python --version` should show `3.12.x` |
+| `uv` package manager | [Install guide](https://docs.astral.sh/uv/#installation) — `uv --version` to verify |
+| Docker & Docker Compose | Recommended for full experience. `docker compose version` to verify |
+| OpenAI API key | Set `OPENAI_API_KEY` in `.env` — must have access to `gpt-4o-mini` |
 
-### Installation
+### Installation (Both Paths)
 
 ```bash
-# Clone the repository
 git clone https://github.com/wong80/LLM-ZOOMCAMP-PROJECT.git
 cd llm-zoomcamp-project
-
-# Create virtual environment and install all dependencies
 uv sync
-
-# Set your OpenAI API key
 cp .env.example .env
-# Edit .env with your key: OPENAI_API_KEY=sk-proj-...
+# Edit .env: OPENAI_API_KEY=sk-proj-...
 ```
 
-**Expected result:** A virtual environment is created at `.venv/` with all dependencies installed. Running `uv sync` again reproduces the exact same environment (locked via `uv.lock`).
+**Expected result:** `.venv/` created with all dependencies. `uv sync` is reproducible via `uv.lock`.
 
-### Step 1: Ingest Documentation
+---
 
-This downloads FastAPI docs, chunks them, and builds search indices.
+### Choose Your Path
+
+| | Option A: Full Experience (Docker) | Option B: App Only (Manual) |
+|---|---|---|
+| Streamlit App | ✅ | ✅ |
+| PostgreSQL persistence | ✅ | ❌ (conversations not saved) |
+| Grafana monitoring dashboard | ✅ | ❌ |
+| What you get | Full stack with 3 containers | Quick Q&A only |
+| Time to set up | ~5 min | ~2 min |
+
+---
+
+### Option A (Recommended) — Full Experience with Docker
+
+This starts the entire stack: app + PostgreSQL + Grafana.
+
+**Step A1 — Ingest documentation (one time)**
 
 ```bash
 uv run python -m ingest.run --library fastapi
 ```
 
-**What happens:**
-1. Fetches `https://fastapi.tiangolo.com/sitemap.xml` (typically ~100+ URLs)
-2. Filters to documentation pages (excludes images, CSS, etc.)
-3. Scrapes each page's HTML content
-4. Chunks each page by heading into overlapping sections
-5. Builds a keyword search index (`minsearch`) and vector embeddings (`all-MiniLM-L6-v2`)
-6. Saves everything to `data/processed/fastapi/`
+Downloads FastAPI docs (~130 pages), chunks them by heading (~500 sections), builds keyword and vector search indices. Takes 2–5 minutes.
 
 **Expected output:**
 ```
 Scraped 135 pages, chunked into 482 sections
-Indexing...
 Saved: data/processed/fastapi/chunks.json
 Saved: data/processed/fastapi/embeddings.npy
 ```
 
-**What to expect:** ~500 chunks from ~130 pages, taking 2-5 minutes depending on network speed. The embedding model downloads on first run (~80MB).
-
-### Step 2: Run the App
+**Step A2 — Start all services**
 
 ```bash
-streamlit run app/main.py
+docker compose up --build -d
 ```
 
-Then open http://localhost:8501 in your browser.
+Builds the app image and starts three containers:
+- **postgres** (port 5432) — PostgreSQL 16 with healthcheck
+- **app** (port 8501) — Streamlit UI
+- **grafana** (port 3000) — Preconfigured with admin/admin login
 
-**What to expect:**
-- A clean UI titled "PyDoc Assistant" with a text input and "Ask" button
-- Select "FastAPI" from the library dropdown
-- Type a question like "How do I create a path operation?" and click Ask
-- The app searches the documentation, generates an answer via GPT-4o-mini, and displays:
-  - The answer with inline citations
-  - Source URLs listed below the answer
-  - A metadata bar showing: `{response_time:.1f}s | {model} | {relevance}`
-  - Thumbs up/down buttons for feedback
-- The sidebar shows your question history
+**Step A3 — Initialize database & monitoring**
 
-**Example questions to try:**
+```bash
+uv run python init.py
+```
+
+Creates `conversations` and `feedback` tables in PostgreSQL, then provisions the Grafana PostgreSQL datasource and imports the 6-panel dashboard.
+
+**Step A4 — Open the app**
+
+http://localhost:8501 — you should see the PyDoc Assistant UI ready to answer questions.
+
+Also open Grafana at http://localhost:3000 (admin/admin) and find the "PyDoc Assistant" dashboard.
+
+**Step A5 — Ask questions**
+
+Type a question and click **Ask**. Try these:
+
 ```
 How do I create a path operation?
 What is dependency injection?
@@ -268,35 +278,98 @@ How do I use query parameters?
 How do I add validation to request body?
 ```
 
-**Without PostgreSQL:** The app runs fine without a database. Conversation saving and feedback will show a warning but the core Q&A feature works.
+**What you should see:**
+- The answer appears with inline citations and source URLs
+- A metadata bar: `{time:.1f}s | gpt-4o-mini | RELEVANT`
+- Thumbs up/down buttons — click one, it saves to PostgreSQL
+- Sidebar tracks your question history (last 50)
+- In Grafana: each query populates the dashboard panels in real time
 
-**With PostgreSQL (optional but recommended for monitoring):**
+**Expected app behavior:**
+
+| Scenario | What Happens |
+|----------|--------------|
+| Question + Ask | Answer with citations + metadata appears |
+| Empty question | Warning: "Please enter a question." |
+| Thumbs up/down | "Feedback saved!" — row inserted in PostgreSQL `feedback` table |
+| Sidebar history | Last 50 Q&As, reversed (most recent first) |
+| Clear History | Sidebar empties, page refreshes |
+| Same question twice | Both answers appear in history (no cache) |
+
+**Expected Grafana panels** (after 5+ queries):
+
+| Panel | Type | Data Source |
+|-------|------|-------------|
+| Questions per Hour | Time series bar | `conversations` table timestamps |
+| Relevance Distribution | Pie chart | `relevance` column (RELEVANT / PARTLY / NON) |
+| Average Response Time | Stat | `response_time` column |
+| API Cost Over Time | Time series line | `openai_cost` column |
+| User Feedback Ratio | Bar chart | `feedback` table (1 = 👍, -1 = 👎) |
+| Model Comparison | Table | Grouped by `model_used` |
+
+**Stop everything:**
 ```bash
-# Start PostgreSQL
-docker run -d --name pydoc-pg -e POSTGRES_DB=pydoc_assistant \
-  -e POSTGRES_USER=user -e POSTGRES_PASSWORD=password \
-  -p 5432:5432 postgres:16
-
-# Initialize tables
-uv run python init.py
+docker compose down
 ```
 
-### Step 3: Run Evaluation
+---
 
-The evaluation pipeline generates ground truth data, runs retrieval metrics, and compares LLM models.
+### Option B — App Only (No Docker)
+
+Quick Q&A without persistence or monitoring.
+
+**Step B1 — Ingest documentation (one time)**
+
+Same as Option A:
+
+```bash
+uv run python -m ingest.run --library fastapi
+```
+
+**Expected output:**
+```
+Scraped 135 pages, chunked into 482 sections
+Saved: data/processed/fastapi/chunks.json
+Saved: data/processed/fastapi/embeddings.npy
+```
+
+**Step B2 — Run the app**
+
+```bash
+streamlit run app/main.py
+```
+
+Open http://localhost:8501.
+
+**Difference from Option A:** The app works identically for Q&A, but conversation saving and feedback display "PostgreSQL not available" messages. The core search + RAG flow is unaffected.
+
+**Step B3 (optional) — Add PostgreSQL manually**
+
+If you have PostgreSQL running separately:
+
+```bash
+uv run python init.py   # creates tables
+streamlit run app/main.py   # now saves conversations
+```
+
+---
+
+### Step After Both Paths: Run Evaluation
+
+After ingestion completes, run the evaluation pipeline to reproduce the numbers below:
 
 ```bash
 uv run python evaluate.py
 ```
 
 **What happens:**
-1. Generates 50 ground truth Q&A pairs from the first 50 chunks (if not already cached) — each chunk gets a natural language question that the chunk answers
-2. Runs retrieval evaluation across three methods:
-   - **Keyword** (default minsearch)
+1. Generates 50 ground truth Q&A pairs from the first 50 chunks (cached after first run)
+2. Runs retrieval evaluation across 4 strategies:
+   - **Keyword** (default TF-IDF)
    - **Vector** (cosine similarity on embeddings)
-   - **Hybrid** (RRF fusion of keyword + vector)
-   - **Keyword optimized** (after boost weight tuning)
-3. Runs LLM evaluation: feeds 3 test questions through both `gpt-4o-mini` and `gpt-4o`, evaluates relevance via LLM-as-judge
+   - **Hybrid** (RRF fusion)
+   - **Keyword optimized** (after boost tuning)
+3. Runs LLM evaluation: feeds 3 test questions through `gpt-4o-mini` and `gpt-4o`, evaluates relevance via LLM-as-judge
 
 **Expected output:**
 ```
@@ -316,87 +389,20 @@ Index built
        gpt-4o      66.67     33.33   0.00     $4.60
 ```
 
-**What these numbers mean** (see [Evaluation Results](#evaluation-results) for full discussion).
-
-### Step 4: Run Tests
+### Final Step: Run Tests
 
 ```bash
-# Run all unit tests (120 tests, excludes integration tests that need real services)
+# All unit tests (120 pass)
 uv run python -m pytest -m "not integration" -v
 
-# Run all tests including integration (requires PostgreSQL + Grafana running)
+# Include integration tests (requires PostgreSQL + Grafana running)
 uv run python -m pytest -v
 ```
 
-**Expected result:**
+**Expected:**
 ```
 120 passed, 4 deselected, 2 warnings in ~14s
 ```
-
-All 120 unit tests pass. The 4 deselected tests are marked `@pytest.mark.integration` and require real PostgreSQL/Grafana services.
-
----
-
-## Running with Docker
-
-The entire stack (app + PostgreSQL + Grafana) runs in containers.
-
-```bash
-# Start all services
-docker compose up --build -d
-
-# Initialize database tables and Grafana datasource/dashboard
-uv run python init.py
-```
-
-**What to expect:**
-- `docker compose up --build -d` builds the app image and starts three containers:
-  - **postgres**: PostgreSQL 16 with healthcheck
-  - **app**: Streamlit UI on port 8501
-  - **grafana**: Grafana on port 3000 (login: admin/admin)
-- `python init.py` creates the `conversations` and `feedback` tables in PostgreSQL and provisions the Grafana datasource + dashboard
-
-**Access the services:**
-| Service | URL |
-|---------|-----|
-| Streamlit App | http://localhost:8501 |
-| Grafana | http://localhost:3000 (admin/admin) |
-
-**Stopping:**
-```bash
-docker compose down
-```
-
----
-
-## What to Expect
-
-### App Behavior
-
-| Scenario | Expected Result |
-|----------|----------------|
-| Type a question and click Ask | Answer appears with sources listed below; metadata shows response time, model, relevance |
-| Ask without entering text | Warning: "Please enter a question." |
-| Click thumbs up/down | "Feedback saved!" message (if PostgreSQL is connected); otherwise warning |
-| Switch to a different library (currently only FastAPI) | Placeholder for future libraries |
-| Check sidebar | Question history appears, limited to last 50 entries |
-| Click Clear History | Sidebar empties, app refreshes |
-| Ask the same question twice | Each answer is generated independently (no caching); both appear in history |
-
-### Database & Monitoring (with PostgreSQL + Grafana)
-
-Every conversation and feedback action is persisted in PostgreSQL. The Grafana dashboard (imported by `init.py`) shows six panels:
-
-| Panel | Type | What It Shows |
-|-------|------|---------------|
-| Questions per Hour | Time series bar | How many questions were asked over time |
-| Relevance Distribution | Pie chart | % RELEVANT vs PARTLY_RELEVANT vs NON_RELEVANT |
-| Average Response Time | Stat | Mean response time across all queries |
-| API Cost Over Time | Time series line | Accumulated OpenAI API cost |
-| User Feedback Ratio | Bar chart | Thumbs up vs thumbs down counts |
-| Model Comparison | Table | Count, avg response time, and avg cost per model |
-
-To view: open http://localhost:3000, log in as admin/admin, find the "PyDoc Assistant" dashboard.
 
 ---
 

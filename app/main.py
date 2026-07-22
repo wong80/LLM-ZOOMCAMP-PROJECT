@@ -87,8 +87,8 @@ def main():
                 conn = db.get_connection()
                 db.save_conversation(conn, conv)
                 conn.close()
-            except Exception as e:
-                st.warning(f"Could not save conversation: {e}")
+            except Exception:
+                st.info("PostgreSQL not available. Conversation not saved.")
 
     if st.session_state.conversation_id and st.session_state.last_answer:
         ans = st.session_state.last_answer
@@ -103,8 +103,8 @@ def main():
                     db.save_feedback(conn, cid, 1)
                     conn.close()
                     st.success("Feedback saved!")
-                except Exception as e:
-                    st.error(f"Feedback failed: {e}")
+                except Exception:
+                    st.info("Feedback not saved (PostgreSQL unavailable).")
         with fb_col2:
             if st.button("👎", key="thumbs_down"):
                 try:
@@ -112,8 +112,8 @@ def main():
                     db.save_feedback(conn, cid, -1)
                     conn.close()
                     st.success("Feedback saved!")
-                except Exception as e:
-                    st.error(f"Feedback failed: {e}")
+                except Exception:
+                    st.info("Feedback not saved (PostgreSQL unavailable).")
 
     with st.sidebar:
         st.markdown("### Previous Questions")
