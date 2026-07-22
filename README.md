@@ -531,7 +531,7 @@ uv run python -m ingest.run --library pydantic   # ingest Pydantic docs
 
 
 **Demonstration of Streaming + Response Caching**
-![View streaming demo](demo\demo.gif)
+![View streaming demo](demo/demo.gif)
 
 
 ---
