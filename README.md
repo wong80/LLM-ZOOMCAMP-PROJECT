@@ -6,31 +6,43 @@ Built as the capstone project for [DataTalks.Club LLM Zoomcamp 2026](https://git
 
 ---
 
-## Problem Statement
+## Table of Contents
 
-Python developers frequently consult library documentation (FastAPI, Pydantic, Requests, etc.) but:
-- Official docs are extensive and hard to search through
-- Generic web search returns noisy, sometimes outdated results
-- There is no single interface that provides precise, cited answers
-
-**PyDoc Assistant** solves this by combining hybrid search (keyword + vector) with an LLM to deliver answers with direct source citations from the official documentation.
+- [Problem Statement](#problem-statement)
+- [Architecture](#architecture)
+- [Dataset & Ingestion](#dataset--ingestion)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [End-to-End Setup & Usage](#end-to-end-setup--usage)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Step 1: Ingest Documentation](#step-1-ingest-documentation)
+  - [Step 2: Run the App](#step-2-run-the-app)
+  - [Step 3: Run Evaluation](#step-3-run-evaluation)
+  - [Step 4: Run Tests](#step-4-run-tests)
+- [Running with Docker](#running-with-docker)
+- [What to Expect](#what-to-expect)
+  - [App Behavior](#app-behavior)
+  - [Database & Monitoring](#database--monitoring)
+- [Evaluation Results](#evaluation-results)
+  - [Retrieval Metrics](#retrieval-metrics)
+  - [LLM Output Evaluation](#llm-output-evaluation)
+  - [Key Findings](#key-findings)
+- [Bonus Features](#bonus-features)
+- [Scoring Checklist](#scoring-checklist)
+- [Conclusions](#conclusions)
 
 ---
 
-## Dataset
+## Problem Statement
 
-**Primary:** [FastAPI](https://fastapi.tiangolo.com/) documentation — a Sphinx/ReadTheDocs-generated site with clear URL structure and section hierarchy.
+Python developers frequently consult library documentation (FastAPI, Pydantic, Requests, etc.) but face three problems:
 
-**Pipeline:**
-1. Fetch `sitemap.xml` to discover all doc pages
-2. Scrape HTML with `httpx` + `BeautifulSoup`
-3. Chunk by section heading (`<h1>`, `<h2>`, `<h3>`) — preserves document structure
-4. Overlapping chunks with sliding window for better retrieval coverage
-5. Store raw chunks as JSONL for reproducibility
-6. Build keyword index (minsearch TF-IDF) and vector embeddings (sentence-transformers `all-MiniLM-L6-v2`)
-7. Embeddings stored as numpy arrays; chunk metadata as JSON
+1. **Official docs are extensive** — finding the right section requires browsing multiple pages
+2. **Generic web search is noisy** — results include outdated blog posts, forum discussions, and unrelated content
+3. **No single interface** exists that provides precise, cited answers from official documentation
 
-**Extensible:** Same pipeline works for any ReadTheDocs-hosted project (Pydantic, Requests, SQLAlchemy, Click).
+**PyDoc Assistant** solves this by combining hybrid search (keyword + vector) with an LLM to deliver answers with direct source citations from the official documentation.
 
 ---
 
@@ -50,6 +62,7 @@ Python developers frequently consult library documentation (FastAPI, Pydantic, R
 │     ├──▶ Keyword Search (minsearch TF-IDF)                               │
 │     ├──▶ Vector Search (sentence-transformers, cosine similarity)        │
 │     └──▶ Hybrid Fusion (Reciprocal Rank Fusion / RRF)                    │
+│  Optionally: Query Rewriting → Reranking (cross-encoder)                 │
 │  Returns top-5 ranked chunks with metadata                               │
 └──────────────────────────┬──────────────────────────────────────────────┘
                            │
@@ -69,16 +82,32 @@ Python developers frequently consult library documentation (FastAPI, Pydantic, R
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Key Design Decisions
+### How the pieces fit together
 
-| Decision | Rationale |
-|----------|-----------|
-| **Hybrid search (keyword + vector)** | Keyword excels at exact term matching; vector captures semantic similarity. RRF fusion combines both strengths. |
-| **Section-heading chunking** | Preserves document structure; each chunk is a coherent, self-contained unit. |
-| **In-memory vector index (numpy)** | Sufficient for course scale; avoids external vector DB complexity. |
-| **GPT-4o-mini as default LLM** | Strong quality-to-cost ratio. GPT-4o available for comparison. |
-| **Streamlit for UI** | Fastest path to a polished Python UI; covered in the course. |
-| **PostgreSQL + Grafana for monitoring** | Standard open-source stack; covers all monitoring requirements. |
+1. **Ingestion** scrapes documentation HTML, splits it by section heading into chunks, builds two search indices (keyword TF-IDF via `minsearch`, vector embeddings via `sentence-transformers`)
+2. **User query** enters the app → optionally rewritten for better matching → searched via hybrid (keyword + vector with RRF fusion) → optionally reranked by a cross-encoder
+3. **Top chunks** are fed into a prompt with the user's question → OpenAI GPT-4o-mini generates an answer citing source URLs
+4. **Answer** is displayed in Streamlit with metadata (response time, model, relevance score) and thumbs up/down feedback
+5. **Every interaction** is logged to PostgreSQL → Grafana dashboard visualizes usage, cost, relevance, and feedback
+
+---
+
+## Dataset & Ingestion
+
+**Primary dataset:** [FastAPI](https://fastapi.tiangolo.com/) documentation — a Sphinx/ReadTheDocs-generated site.
+
+**Pipeline steps:**
+1. Fetch `sitemap.xml` to discover all doc page URLs
+2. Scrape each page's HTML content with `httpx` + `BeautifulSoup`
+3. Split by section heading (`<h1>` through `<h4>`) — each chunk is a coherent document section
+4. Apply sliding-window overlap between adjacent chunks for better retrieval coverage
+5. Store raw chunks as JSONL for reproducibility
+6. Build two indices:
+   - **Keyword index**: `minsearch` (TF-IDF/BM25-like), serialized as pickle
+   - **Vector index**: `sentence-transformers` (`all-MiniLM-L6-v2`, 384-dim), stored as numpy arrays with chunk metadata as JSON
+7. Save everything under `data/processed/{library}/`
+
+**Extensible:** The same pipeline works for any ReadTheDocs-hosted project (Pydantic, Requests, SQLAlchemy, Click, etc.) by passing `--library <name>`.
 
 ---
 
@@ -92,12 +121,14 @@ Python developers frequently consult library documentation (FastAPI, Pydantic, R
 | Keyword search | `minsearch` (TF-IDF/BM25-like) |
 | Embeddings | `sentence-transformers` (all-MiniLM-L6-v2, 384-dim) |
 | Vector search | numpy cosine similarity |
-| LLM | OpenAI API (GPT-4o-mini, GPT-4o) |
+| LLM | OpenAI API (GPT-4o-mini default, GPT-4o optional) |
 | UI | Streamlit |
 | Database | PostgreSQL 16 |
 | Monitoring | Grafana |
 | Containerization | Docker, Docker Compose |
+| Testing | pytest, pytest-mock |
 | Bonus: Reranking | Cross-encoder (`cross-encoder/ms-marco-MiniLM-L-6-v2`) |
+| Bonus: Query rewriting | Abbreviation expansion + optional LLM rewrite |
 
 ---
 
@@ -107,15 +138,19 @@ Python developers frequently consult library documentation (FastAPI, Pydantic, R
 ├── app/                        # Application code
 │   ├── main.py                 # Streamlit entry point
 │   ├── rag.py                  # RAG flow (retrieve → prompt → LLM → answer)
-│   ├── search.py               # Hybrid search (keyword, vector, RRF fusion, query rewrite, rerank)
+│   ├── search.py               # Hybrid search, query rewrite, reranking
 │   ├── llm.py                  # OpenAI LLM client
-│   └── db.py                   # PostgreSQL client (conversations + feedback)
+│   ├── db.py                   # PostgreSQL client (conversations + feedback)
+│   └── evaluation.py           # Hit rate, MRR, retrieve eval, model comparison
 │
 ├── ingest/                     # Data ingestion pipeline
 │   ├── scrape.py               # Sitemap discovery + HTML scraping
 │   ├── chunk.py                # Section-heading chunking logic
-│   ├── index.py                # Embedding generation + vector index build + minsearch index
+│   ├── index.py                # Embedding generation + vector + keyword index build
 │   └── run.py                  # Orchestration: scrape → chunk → index
+│
+├── grafana/                    # Grafana provisioning
+│   └── init.py                 # Auto-create PostgreSQL datasource + import dashboard
 │
 ├── notebooks/                  # Evaluation notebooks
 │   ├── 01-ingestion.ipynb      # Scrape, chunk, index demonstration
@@ -123,145 +158,369 @@ Python developers frequently consult library documentation (FastAPI, Pydantic, R
 │   ├── 03-retrieval-eval.ipynb # Hit rate, MRR, boost optimization
 │   └── 04-rag-eval.ipynb       # LLM-as-judge, model comparison
 │
-├── data/                       # Data artifacts
-│   ├── raw/                    # Raw scraped chunks (JSONL)
-│   └── processed/              # Embeddings (npy), chunk metadata (json)
+├── tests/                      # Test suite (120 unit tests, 3 integration)
+│   ├── test_search.py          # Keyword, vector, hybrid search tests
+│   ├── test_rag.py             # Prompt building, RAG flow tests
+│   ├── test_llm.py             # LLM client tests
+│   ├── test_db.py              # PostgreSQL CRUD tests
+│   ├── test_ui.py              # Streamlit UI component tests
+│   ├── test_ui_session.py      # Session history tests
+│   ├── test_ingest_*.py        # Ingestion pipeline tests
+│   ├── test_evaluation_*.py    # Evaluation metrics tests
+│   ├── test_bonus_*.py         # Bonus feature tests
+│   ├── test_docker.py          # Dockerfile/compose validation tests
+│   ├── test_grafana.py         # Grafana provisioning tests
+│   └── conftest.py             # Shared fixtures
 │
-├── grafana/                    # Grafana provisioning
-│   └── init.py                 # Auto-create datasource + dashboard
+├── data/                       # Data artifacts (gitignored)
+│   ├── raw/                    # Raw scraped chunks (JSONL)
+│   ├── processed/              # Embeddings (npy), chunk metadata (json)
+│   └── ground_truth.jsonl      # Generated Q&A pairs for evaluation
 │
 ├── pyproject.toml              # Project metadata + dependencies
 ├── uv.lock                     # Reproducible dependency lockfile
 ├── Dockerfile                  # App container definition
 ├── docker-compose.yaml         # Multi-service orchestration
 ├── init.py                     # First-run setup (DB tables + Grafana)
-└── .env.example                # Environment variable template
+├── evaluate.py                 # End-to-end evaluation script
+├── .env.example                # Environment variable template
+└── results.md                  # Saved evaluation output
 ```
 
 ---
 
-## Setup & Usage
+## End-to-End Setup & Usage
 
 ### Prerequisites
+
 - Python 3.12
-- `uv` package manager
-- OpenAI API key
+- `uv` package manager ([install guide](https://docs.astral.sh/uv/#installation))
+- An OpenAI API key with access to `gpt-4o-mini` and optionally `gpt-4o`
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone <repo-url>
+git clone https://github.com/wong80/LLM-ZOOMCAMP-PROJECT.git
 cd llm-zoomcamp-project
 
-# Create environment and install dependencies
+# Create virtual environment and install all dependencies
 uv sync
 
 # Set your OpenAI API key
 cp .env.example .env
-# Edit .env with your key: OPENAI_API_KEY=sk-...
+# Edit .env with your key: OPENAI_API_KEY=sk-proj-...
 ```
 
-### Ingestion
+**Expected result:** A virtual environment is created at `.venv/` with all dependencies installed. Running `uv sync` again reproduces the exact same environment (locked via `uv.lock`).
+
+### Step 1: Ingest Documentation
+
+This downloads FastAPI docs, chunks them, and builds search indices.
 
 ```bash
-# Scrape, chunk, and index FastAPI documentation
-python -m ingest.run --library fastapi
+uv run python -m ingest.run --library fastapi
 ```
 
-### Run the App
+**What happens:**
+1. Fetches `https://fastapi.tiangolo.com/sitemap.xml` (typically ~100+ URLs)
+2. Filters to documentation pages (excludes images, CSS, etc.)
+3. Scrapes each page's HTML content
+4. Chunks each page by heading into overlapping sections
+5. Builds a keyword search index (`minsearch`) and vector embeddings (`all-MiniLM-L6-v2`)
+6. Saves everything to `data/processed/fastapi/`
+
+**Expected output:**
+```
+Scraped 135 pages, chunked into 482 sections
+Indexing...
+Saved: data/processed/fastapi/chunks.json
+Saved: data/processed/fastapi/embeddings.npy
+```
+
+**What to expect:** ~500 chunks from ~130 pages, taking 2-5 minutes depending on network speed. The embedding model downloads on first run (~80MB).
+
+### Step 2: Run the App
 
 ```bash
-# Start the Streamlit UI
 streamlit run app/main.py
 ```
 
-### Run with Docker
+Then open http://localhost:8501 in your browser.
 
-```bash
-docker compose up --build -d
-python init.py  # Create DB tables + provision Grafana
+**What to expect:**
+- A clean UI titled "PyDoc Assistant" with a text input and "Ask" button
+- Select "FastAPI" from the library dropdown
+- Type a question like "How do I create a path operation?" and click Ask
+- The app searches the documentation, generates an answer via GPT-4o-mini, and displays:
+  - The answer with inline citations
+  - Source URLs listed below the answer
+  - A metadata bar showing: `{response_time:.1f}s | {model} | {relevance}`
+  - Thumbs up/down buttons for feedback
+- The sidebar shows your question history
+
+**Example questions to try:**
+```
+How do I create a path operation?
+What is dependency injection?
+How do I handle errors in FastAPI?
+How do I use query parameters?
+How do I add validation to request body?
 ```
 
-Access:
-- **Streamlit App:** http://localhost:8501
-- **Grafana Dashboard:** http://localhost:3000 (admin/admin)
+**Without PostgreSQL:** The app runs fine without a database. Conversation saving and feedback will show a warning but the core Q&A feature works.
+
+**With PostgreSQL (optional but recommended for monitoring):**
+```bash
+# Start PostgreSQL
+docker run -d --name pydoc-pg -e POSTGRES_DB=pydoc_assistant \
+  -e POSTGRES_USER=user -e POSTGRES_PASSWORD=password \
+  -p 5432:5432 postgres:16
+
+# Initialize tables
+uv run python init.py
+```
+
+### Step 3: Run Evaluation
+
+The evaluation pipeline generates ground truth data, runs retrieval metrics, and compares LLM models.
+
+```bash
+uv run python evaluate.py
+```
+
+**What happens:**
+1. Generates 50 ground truth Q&A pairs from the first 50 chunks (if not already cached) — each chunk gets a natural language question that the chunk answers
+2. Runs retrieval evaluation across three methods:
+   - **Keyword** (default minsearch)
+   - **Vector** (cosine similarity on embeddings)
+   - **Hybrid** (RRF fusion of keyword + vector)
+   - **Keyword optimized** (after boost weight tuning)
+3. Runs LLM evaluation: feeds 3 test questions through both `gpt-4o-mini` and `gpt-4o`, evaluates relevance via LLM-as-judge
+
+**Expected output:**
+```
+Loaded 50 ground truth pairs
+Index built
+
+--- Retrieval Metrics ---
+     keyword:  HR=0.600  MRR=0.431
+      vector:  HR=0.420  MRR=0.314
+      hybrid:  HR=0.660  MRR=0.419
+  keyword_opt:  HR=0.820  MRR=0.525
+  best boosts: {'title': 0.78, 'section': 1.07, 'content': 2.66}
+
+--- LLM Evaluation ---
+         Model  % RELEVANT  % PARTLY  % NON  Cost/1K
+ gpt-4o-mini      100.00      0.00   0.00     $0.39
+       gpt-4o      66.67     33.33   0.00     $4.60
+```
+
+**What these numbers mean** (see [Evaluation Results](#evaluation-results) for full discussion).
+
+### Step 4: Run Tests
+
+```bash
+# Run all unit tests (120 tests, excludes integration tests that need real services)
+uv run python -m pytest -m "not integration" -v
+
+# Run all tests including integration (requires PostgreSQL + Grafana running)
+uv run python -m pytest -v
+```
+
+**Expected result:**
+```
+120 passed, 4 deselected, 2 warnings in ~14s
+```
+
+All 120 unit tests pass. The 4 deselected tests are marked `@pytest.mark.integration` and require real PostgreSQL/Grafana services.
 
 ---
 
-## Evaluation Methodology
+## Running with Docker
 
-### Retrieval Evaluation
+The entire stack (app + PostgreSQL + Grafana) runs in containers.
 
-**Ground truth:** For each doc chunk, GPT generates a natural question that the chunk answers.
+```bash
+# Start all services
+docker compose up --build -d
 
-**Metrics:**
-- **Hit Rate** — Fraction of queries where the correct chunk appears in top-k results
-- **Mean Reciprocal Rank (MRR)** — Average of `1 / rank` of the first relevant result
+# Initialize database tables and Grafana datasource/dashboard
+uv run python init.py
+```
 
-**Compared strategies:**
+**What to expect:**
+- `docker compose up --build -d` builds the app image and starts three containers:
+  - **postgres**: PostgreSQL 16 with healthcheck
+  - **app**: Streamlit UI on port 8501
+  - **grafana**: Grafana on port 3000 (login: admin/admin)
+- `python init.py` creates the `conversations` and `feedback` tables in PostgreSQL and provisions the Grafana datasource + dashboard
+
+**Access the services:**
+| Service | URL |
+|---------|-----|
+| Streamlit App | http://localhost:8501 |
+| Grafana | http://localhost:3000 (admin/admin) |
+
+**Stopping:**
+```bash
+docker compose down
+```
+
+---
+
+## What to Expect
+
+### App Behavior
+
+| Scenario | Expected Result |
+|----------|----------------|
+| Type a question and click Ask | Answer appears with sources listed below; metadata shows response time, model, relevance |
+| Ask without entering text | Warning: "Please enter a question." |
+| Click thumbs up/down | "Feedback saved!" message (if PostgreSQL is connected); otherwise warning |
+| Switch to a different library (currently only FastAPI) | Placeholder for future libraries |
+| Check sidebar | Question history appears, limited to last 50 entries |
+| Click Clear History | Sidebar empties, app refreshes |
+| Ask the same question twice | Each answer is generated independently (no caching); both appear in history |
+
+### Database & Monitoring (with PostgreSQL + Grafana)
+
+Every conversation and feedback action is persisted in PostgreSQL. The Grafana dashboard (imported by `init.py`) shows six panels:
+
+| Panel | Type | What It Shows |
+|-------|------|---------------|
+| Questions per Hour | Time series bar | How many questions were asked over time |
+| Relevance Distribution | Pie chart | % RELEVANT vs PARTLY_RELEVANT vs NON_RELEVANT |
+| Average Response Time | Stat | Mean response time across all queries |
+| API Cost Over Time | Time series line | Accumulated OpenAI API cost |
+| User Feedback Ratio | Bar chart | Thumbs up vs thumbs down counts |
+| Model Comparison | Table | Count, avg response time, and avg cost per model |
+
+To view: open http://localhost:3000, log in as admin/admin, find the "PyDoc Assistant" dashboard.
+
+---
+
+## Evaluation Results
+
+Run: `uv run python evaluate.py` — 50 ground truth pairs, 3 LLM test questions.
+
+### Retrieval Metrics
+
+Four retrieval strategies were compared using Hit Rate (fraction of queries where the correct chunk appears in top-5) and Mean Reciprocal Rank (average of 1/rank of the first relevant result):
 
 | Strategy | Hit Rate | MRR |
 |----------|----------|-----|
-| Keyword only (no boost) | 0.600 | 0.431 |
-| Keyword only (optimized boost) | **0.820** | **0.525** |
-| Vector only | 0.420 | 0.314 |
-| Hybrid (keyword + vector, RRF) | 0.660 | 0.419 |
+| Keyword only (default TF-IDF) | 0.600 | 0.431 |
+| Vector only (cosine similarity) | 0.420 | 0.314 |
+| Hybrid (RRF fusion, k=60) | 0.660 | 0.419 |
+| Keyword (optimized boost weights) | **0.820** | **0.525** |
 
-**Boost optimization:** Random search over field weights (0.0–3.0), 30 iterations, maximizing hit rate on validation set.
+Optimal boost weights found by random search (30 iterations, 0.0–3.0 range):
+- `title` = 0.78
+- `section` = 1.07
+- `content` = 2.66
 
 ### LLM Output Evaluation
 
-**LLM-as-judge:** A separate LLM call classifies answers as `RELEVANT`, `PARTLY_RELEVANT`, or `NON_RELEVANT` relative to the question.
+Two models were compared via LLM-as-judge on 3 test questions. The judge classified each answer as `RELEVANT`, `PARTLY_RELEVANT`, or `NON_RELEVANT`:
 
 | Model | % RELEVANT | % PARTLY | % NON | Cost per 1K queries |
 |-------|-----------|----------|-------|-------------------|
-| gpt-4o-mini | 100.00% | 0.00% | 0.00% | $0.39 |
-| gpt-4o | 66.67% | 33.33% | 0.00% | $4.60 |
+| gpt-4o-mini | 100.00 | 0.00 | 0.00 | $0.39 |
+| gpt-4o | 66.67 | 33.33 | 0.00 | $4.60 |
 
----
+### Key Findings
 
-## Monitoring
+1. **Boost optimization is the biggest win.** Optimized keyword (0.820 HR) beats default keyword (0.600) by +37%. Content field weight (2.66) matters ~3x more than title (0.78). This makes sense — the content field contains the actual documentation text, while the title is often just a few words.
 
-**PostgreSQL** stores every conversation (question, answer, model, tokens, cost, response time, relevance) plus user feedback.
+2. **Vector search underperforms keyword** (0.420 vs 0.600). The `all-MiniLM-L6-v2` model (384-dim) may be too small to capture semantic nuance in technical documentation. A larger model like `all-mpnet-base-v2` (768d) might close the gap.
 
-**Grafana dashboard** (6 charts):
-1. Questions over time (time series bar)
-2. Relevance distribution (pie chart)
-3. Average response time (stat)
-4. API cost over time (time series line)
-5. User feedback ratio (thumbs up/down bar)
-6. Model comparison table (count, avg response time)
+3. **Hybrid (0.660) beats both individual default methods** but loses to keyword_opt (0.820). RRF fusion helps when keyword misses terms that vector captures, but with optimized keyword already scoring 0.820, the noisy vector results don't add much signal.
+
+4. **gpt-4o-mini scoring 100% vs gpt-4o 66.67% is suspect at n=3.** This is likely LLM-as-judge self-preference bias — the judge model (gpt-4o-mini) rates its own outputs higher. With only 3 test questions, these numbers are statistically noisy. A proper evaluation would need 50+ questions and a held-out judge model.
+
+5. **Cost comparison is stark.** gpt-4o-mini costs $0.39 per 1K queries vs gpt-4o at $4.60 — a 12x difference with comparable (or better) relevance scores.
 
 ---
 
 ## Bonus Features
 
-| Feature | Description |
-|---------|-------------|
-| **Hybrid Search (+1 pt)** | Keyword + vector with RRF fusion; separately evaluated |
-| **Query Rewriting (+1 pt)** | LLM rewrites user questions for better retrieval matching (e.g., "dep inj" → "dependency injection") |
-| **Cross-encoder Reranking (+1 pt)** | Reranks top-20 hybrid results using cross-encoder model for higher precision |
+### 1. Hybrid Search (+1 pt)
+
+**What it does:** Combines keyword (TF-IDF) and vector (cosine similarity) search using Reciprocal Rank Fusion (RRF). Each method independently retrieves top-20 results, then RRF merges them into a single ranked list by combining rank-based scores.
+
+**Where:** `app/search.py` — `hybrid_search()`, `_rrf_fuse()`
+
+**Evidence:** Separate evaluation proves hybrid (0.660 HR) beats both keyword-only (0.600) and vector-only (0.420) in default configuration.
+
+### 2. Query Rewriting (+1 pt)
+
+**What it does:** Before sending the user's question to search, expands common abbreviations for better term matching. For example, "dep inj in FastAPI" becomes "dependency injection in fastapi".
+
+**Where:** `app/search.py` — `rewrite_query()`
+
+**Abbreviation mappings:**
+| Short | Full |
+|-------|------|
+| dep inj | dependency injection |
+| path op | path operation |
+| req | request |
+| resp | response |
+| val | validation |
+
+An optional `method="llm"` mode uses GPT-4o-mini to rewrite the query for maximum searchability.
+
+### 3. Cross-Encoder Reranking (+1 pt)
+
+**What it does:** After hybrid search returns top-20 chunks, a cross-encoder model (`cross-encoder/ms-marco-MiniLM-L-6-v2`) scores each (query, chunk) pair for relevance. The chunks are reordered by relevance score, and top-5 are fed to the LLM.
+
+**Where:** `app/search.py` — `rerank()`, `_get_reranker()`
+
+**Why cross-encoder:** More accurate than bi-encoder cosine similarity because it processes query and chunk together through a transformer, rather than encoding them independently.
 
 ---
 
-## Scoring Checklist (LLM Zoomcamp Rubric)
+## Scoring Checklist
 
-| Criterion | Points | Where to Find |
-|-----------|--------|---------------|
-| Problem description | 2 | README (this document) |
-| Retrieval flow | 2 | `app/search.py`, `ingest/` |
-| Retrieval evaluation | 2 | `notebooks/03-retrieval-eval.ipynb` |
-| LLM evaluation | 2 | `notebooks/04-rag-eval.ipynb` |
-| Interface | 2 | `app/main.py` (Streamlit) |
-| Ingestion pipeline | 2 | `ingest/run.py`, `ingest/scrape.py`, `ingest/chunk.py` |
-| Monitoring | 2 | PostgreSQL schema, Grafana dashboard |
-| Containerization | 2 | `Dockerfile`, `docker-compose.yaml` |
-| Reproducibility | 2 | `uv.lock`, `.env.example`, setup instructions |
-| Hybrid search (bonus) | +1 | `app/search.py` — keyword, vector, hybrid functions |
-| Reranking (bonus) | +1 | `app/search.py` — cross-encoder rerank function |
-| Query rewriting (bonus) | +1 | `app/search.py` — query rewrite function |
-| **Total** | **21** | |
+| Criterion | Points | Where to Find | How to Verify |
+|-----------|--------|---------------|---------------|
+| Problem description | 2 | README (this document) | Reads the Problem Statement section |
+| Retrieval flow | 2 | `app/search.py` (keyword, vector, hybrid), `ingest/` pipeline | Code review: keyword → vector → hybrid with RRF fusion |
+| Retrieval evaluation | 2 | `notebooks/03-retrieval-eval.ipynb`, `app/evaluation.py` | Contains HR, MRR, boost optimization |
+| LLM evaluation | 2 | `notebooks/04-rag-eval.ipynb`, `evaluate.py` | LLM-as-judge: RELEVANT/PARTLY/NON with cost comparison |
+| Interface | 2 | `app/main.py` (Streamlit UI) | Run `streamlit run app/main.py` — see Ask button, answer, citations, feedback, history |
+| Ingestion pipeline | 2 | `ingest/run.py`, `ingest/scrape.py`, `ingest/chunk.py` | Run `uv run python -m ingest.run --library fastapi` — produces chunks, indices |
+| Monitoring | 2 | PostgreSQL schema (`app/db.py`), Grafana dashboard (`grafana/dashboard.json`) | Start stack: `docker compose up` + `python init.py` → Grafana shows 6 panels |
+| Containerization | 2 | `Dockerfile`, `docker-compose.yaml` | Run `docker compose up --build -d` — app, postgres, grafana all start |
+| Reproducibility | 2 | `uv.lock`, `.env.example`, README setup instructions | Fresh clone → `uv sync` → `python -m ingest.run` → `streamlit run app/main.py` — works |
+| Hybrid search (bonus) | +1 | `app/search.py` — separate keyword/vector/hybrid functions, RRF fusion | Eval shows hybrid HR (0.660) > keyword (0.600) > vector (0.420) |
+| Reranking (bonus) | +1 | `app/search.py` — `rerank()` with cross-encoder | Test: `pytest tests/test_bonus_reranking.py -v` |
+| Query rewriting (bonus) | +1 | `app/search.py` — `rewrite_query()` abbreviation expansion | Test: `pytest tests/test_bonus_query_rewrite.py -v` |
+| **Total** | **21** | | |
+
+---
+
+## Conclusions
+
+### What works well
+
+1. **Keyword search with optimized boosts is the most effective retrieval strategy** (0.820 HR). The minsearch library with tuned field weights outperforms both plain keyword and vector search on this dataset.
+
+2. **The RAG pipeline produces high-quality, cited answers.** GPT-4o-mini generates accurate answers with proper source citations at a cost of ~$0.39 per 1,000 queries.
+
+3. **The full stack is containerized and reproducible.** Docker Compose starts the entire application (app + PostgreSQL + Grafana) with a single command. Running `uv sync` with the lockfile guarantees identical dependencies.
+
+4. **Monitoring provides operational visibility.** Every query is logged with response time, cost, relevance score, and user feedback — all visible in the Grafana dashboard.
+
+### What could be improved
+
+1. **Stronger embedding model.** `all-MiniLM-L6-v2` (384-dim) underperforms keyword search. Upgrading to `all-mpnet-base-v2` (768-dim) or `BAAI/bge-small-en-v1.5` would likely improve vector search quality and, by extension, hybrid search.
+
+2. **Larger evaluation set.** Current results are based on 50 ground truth pairs for retrieval and only 3 questions for LLM evaluation. A production-grade evaluation would need 200+ ground truth pairs and 50+ LLM test questions with a held-out judge model to avoid self-preference bias.
+
+3. **Multi-library support.** The pipeline is designed to support multiple libraries (Pydantic, Requests, SQLAlchemy), but the UI currently only lists FastAPI. Library discovery and switching are ready in the data pipeline.
+
+4. **LLM-as-judge bias.** The current judge (gpt-4o-mini) shows signs of self-preference bias. Using a different model as judge (e.g., gpt-4o to evaluate gpt-4o-mini outputs) would produce more reliable relevance scores.
 
 ---
 
