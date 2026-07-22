@@ -529,6 +529,14 @@ uv run python -m ingest.run --library pydantic   # ingest Pydantic docs
 
 **How to verify:** Ask the same question twice. The second response includes `cached: True` in the result metadata and completes in <1ms (vs 5-10s for a fresh LLM call).
 
+
+**Demonstration of Streaming + Response Caching**
+<video controls width="600">
+  <source src="demo\demo.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
+
+
 ---
 
 ## Scoring Checklist
