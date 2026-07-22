@@ -393,6 +393,21 @@ Index built
        gpt-4o      66.67     33.33   0.00     $4.60
 ```
 
+### Final Step: Run Tests
+
+```bash
+# All unit tests (120 pass)
+uv run python -m pytest -m "not integration" -v
+
+# Include integration tests (requires PostgreSQL + Grafana running)
+uv run python -m pytest -v
+```
+
+**Expected:**
+```
+120 passed, 4 deselected, 2 warnings in ~14s
+```
+
 ---
 
 ## Evaluation Results
@@ -472,6 +487,26 @@ An optional `method="llm"` mode uses GPT-4o-mini to rewrite the query for maximu
 **Where:** `app/search.py` — `rerank()`, `_get_reranker()`
 
 **Why cross-encoder:** More accurate than bi-encoder cosine similarity because it processes query and chunk together through a transformer, rather than encoding them independently.
+
+---
+
+## Scoring Checklist
+
+| Criterion | Points | Where to Find | How to Verify |
+|-----------|--------|---------------|---------------|
+| Problem description | 2 | README (this document) | Reads the Problem Statement section |
+| Retrieval flow | 2 | `app/search.py` (keyword, vector, hybrid), `ingest/` pipeline | Code review: keyword → vector → hybrid with RRF fusion |
+| Retrieval evaluation | 2 | `notebooks/03-retrieval-eval.ipynb`, `app/evaluation.py` | Contains HR, MRR, boost optimization |
+| LLM evaluation | 2 | `notebooks/04-rag-eval.ipynb`, `evaluate.py` | LLM-as-judge: RELEVANT/PARTLY/NON with cost comparison |
+| Interface | 2 | `app/main.py` (Streamlit UI) | Run `streamlit run app/main.py` — see Ask button, answer, citations, feedback, history |
+| Ingestion pipeline | 2 | `ingest/run.py`, `ingest/scrape.py`, `ingest/chunk.py` | Run `uv run python -m ingest.run --library fastapi` — produces chunks, indices |
+| Monitoring | 2 | PostgreSQL schema (`app/db.py`), Grafana dashboard (`grafana/dashboard.json`) | Start stack: `docker compose up` + `python init.py` → Grafana shows 6 panels |
+| Containerization | 2 | `Dockerfile`, `docker-compose.yaml` | Run `docker compose up --build -d` — app, postgres, grafana all start |
+| Reproducibility | 2 | `uv.lock`, `.env.example`, README setup instructions | Fresh clone → `uv sync` → `python -m ingest.run` → `streamlit run app/main.py` — works |
+| Hybrid search (bonus) | +1 | `app/search.py` — separate keyword/vector/hybrid functions, RRF fusion | Eval shows hybrid HR (0.660) > keyword (0.600) > vector (0.420) |
+| Reranking (bonus) | +1 | `app/search.py` — `rerank()` with cross-encoder | Test: `pytest tests/test_bonus_reranking.py -v` |
+| Query rewriting (bonus) | +1 | `app/search.py` — `rewrite_query()` abbreviation expansion | Test: `pytest tests/test_bonus_query_rewrite.py -v` |
+| **Total** | **21** | | |
 
 ---
 
