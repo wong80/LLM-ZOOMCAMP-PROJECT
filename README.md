@@ -531,10 +531,7 @@ uv run python -m ingest.run --library pydantic   # ingest Pydantic docs
 
 
 **Demonstration of Streaming + Response Caching**
-<video controls width="600">
-  <source src="demo\demo.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
+![View streaming demo](demo\demo.gif)
 
 
 ---
