@@ -12,7 +12,14 @@ if _project_root not in sys.path:
 import streamlit as st
 
 import app.db as db
-from app.rag import rag
+from app.rag import rag_stream
+
+
+def get_available_libraries() -> list[str]:
+    processed = os.path.join(_project_root, "data", "processed")
+    if not os.path.isdir(processed):
+        return ["fastapi"]
+    return sorted(d for d in os.listdir(processed) if os.path.isdir(os.path.join(processed, d))) or ["fastapi"]
 
 
 def render_answer(result: dict) -> str:
@@ -44,9 +51,10 @@ def main():
     if "last_answer" not in st.session_state:
         st.session_state.last_answer = None
 
-    st.selectbox("Library", ["FastAPI"], index=0)
+    libraries = [s.capitalize() for s in get_available_libraries()]
+    library = st.selectbox("Library", libraries, index=0).lower()
 
-    question = st.text_input("Ask a question about FastAPI:")
+    question = st.text_input(f"Ask a question about {library.capitalize()} docs:")
 
     col1, col2 = st.columns([1, 5])
     with col1:
@@ -58,29 +66,27 @@ def main():
         if not question or not question.strip():
             st.warning("Please enter a question.")
         else:
-            with st.spinner("Searching docs and generating answer..."):
-                result = rag(question)
-            st.session_state.last_answer = result
+            full_answer = st.write_stream(rag_stream(question, library=library))
+            st.session_state.last_answer = {"answer": full_answer, "citations": getattr(rag_stream, "citations", [])}
 
             conv_id = str(uuid.uuid4())
             st.session_state.conversation_id = conv_id
-            st.session_state.history.append({"question": question, "answer": result["answer"]})
+            st.session_state.history.append({"question": question, "answer": full_answer})
 
-            eval_tokens = result.get("eval_tokens") or {}
             conv = {
                 "id": conv_id,
                 "question": question,
-                "answer": result["answer"],
-                "model_used": result.get("model", ""),
-                "response_time": result.get("response_time", 0),
-                "relevance": result.get("relevance", ""),
-                "prompt_tokens": result.get("prompt_tokens", 0),
-                "completion_tokens": result.get("completion_tokens", 0),
-                "total_tokens": result.get("total_tokens", 0),
-                "eval_prompt_tokens": eval_tokens.get("prompt_tokens", 0),
-                "eval_completion_tokens": eval_tokens.get("completion_tokens", 0),
-                "eval_total_tokens": eval_tokens.get("total_tokens", 0),
-                "openai_cost": result.get("cost", 0),
+                "answer": full_answer,
+                "model_used": "gpt-4o-mini",
+                "response_time": 0,
+                "relevance": "",
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "eval_prompt_tokens": 0,
+                "eval_completion_tokens": 0,
+                "eval_total_tokens": 0,
+                "openai_cost": 0,
                 "timestamp": datetime.now(timezone.utc),
             }
             try:
@@ -93,7 +99,6 @@ def main():
     if st.session_state.conversation_id and st.session_state.last_answer:
         ans = st.session_state.last_answer
         st.markdown(render_answer(ans), unsafe_allow_html=True)
-        st.caption(f"{ans.get('response_time', 0):.1f}s | {ans.get('model', '')} | {ans.get('relevance', '')}")
         cid = st.session_state.conversation_id
         fb_col1, fb_col2 = st.columns([1, 10])
         with fb_col1:

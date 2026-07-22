@@ -22,7 +22,8 @@ def _load_default_embeddings(library: str = "fastapi") -> tuple[np.ndarray, list
     meta_path = f"data/processed/{library}/chunks.json"
     if not os.path.exists(emb_path) or not os.path.exists(meta_path):
         return None
-    return np.load(emb_path), json.load(open(meta_path, encoding="utf-8"))
+    with open(meta_path, encoding="utf-8") as f:
+        return np.load(emb_path), json.load(f)
 
 
 def keyword_search(
@@ -30,11 +31,12 @@ def keyword_search(
     index: Index | None = None,
     num_results: int = 5,
     boost_dict: dict | None = None,
+    library: str = "fastapi",
 ) -> list[dict]:
     if not query.strip():
         return []
     if index is None:
-        index = load_minsearch_index()
+        index = load_minsearch_index(library)
     if index is None:
         return []
     return index.search(query, num_results=num_results, boost_dict=boost_dict or {})
@@ -46,11 +48,12 @@ def vector_search(
     chunks: list[dict] | None = None,
     num_results: int = 5,
     model: SentenceTransformer | None = None,
+    library: str = "fastapi",
 ) -> list[dict]:
     if not query.strip():
         return []
     if embeddings is None or chunks is None:
-        loaded = _load_default_embeddings()
+        loaded = _load_default_embeddings(library)
         if loaded is None:
             return []
         embeddings, chunks = loaded
@@ -70,14 +73,15 @@ def hybrid_search(
     chunks: list[dict] | None = None,
     num_results: int = 5,
     model: SentenceTransformer | None = None,
+    library: str = "fastapi",
 ) -> list[dict]:
     if method == "keyword":
-        return keyword_search(query, index=index, num_results=num_results)
+        return keyword_search(query, index=index, num_results=num_results, library=library)
     elif method == "vector":
-        return vector_search(query, embeddings=embeddings, chunks=chunks, num_results=num_results, model=model)
+        return vector_search(query, embeddings=embeddings, chunks=chunks, num_results=num_results, model=model, library=library)
     elif method == "hybrid":
-        kw = keyword_search(query, index=index, num_results=num_results * 4)
-        vec = vector_search(query, embeddings=embeddings, chunks=chunks, num_results=num_results * 4, model=model)
+        kw = keyword_search(query, index=index, num_results=num_results * 4, library=library)
+        vec = vector_search(query, embeddings=embeddings, chunks=chunks, num_results=num_results * 4, model=model, library=library)
         return _rrf_fuse(kw, vec, num_results)
     raise ValueError(f"Unknown method: {method}. Use 'keyword', 'vector', or 'hybrid'.")
 

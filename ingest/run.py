@@ -20,6 +20,7 @@ from ingest.index import (
 
 SITEMAP_MAP = {
     "fastapi": "https://fastapi.tiangolo.com/sitemap.xml",
+    "pydantic": "https://docs.pydantic.dev/latest/sitemap.xml",
 }
 
 

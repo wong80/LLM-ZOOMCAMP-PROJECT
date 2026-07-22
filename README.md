@@ -125,6 +125,9 @@ Python developers frequently consult library documentation (FastAPI, Pydantic, R
 | Testing | pytest, pytest-mock |
 | Bonus: Reranking | Cross-encoder (`cross-encoder/ms-marco-MiniLM-L-6-v2`) |
 | Bonus: Query rewriting | Abbreviation expansion + optional LLM rewrite |
+| Bonus: Multi-library | Dynamic library dropdown (FastAPI, Pydantic, etc.) |
+| Bonus: Streaming | Token-by-token answer rendering via `st.write_stream()` |
+| Bonus: Response caching | LRU cache on RAG results (128 entries) |
 
 ---
 
@@ -154,7 +157,7 @@ Python developers frequently consult library documentation (FastAPI, Pydantic, R
 │   ├── 03-retrieval-eval.ipynb # Hit rate, MRR, boost optimization
 │   └── 04-rag-eval.ipynb       # LLM-as-judge, model comparison
 │
-├── tests/                      # Test suite (120 unit tests, 3 integration)
+├── tests/                      # Test suite (132 unit tests, 6 integration)
 │   ├── test_search.py          # Keyword, vector, hybrid search tests
 │   ├── test_rag.py             # Prompt building, RAG flow tests
 │   ├── test_llm.py             # LLM client tests
@@ -289,6 +292,14 @@ How do I add validation to request body?
 - Sidebar tracks your question history (last 50)
 - In Grafana: each query populates the dashboard panels in real time
 
+**Step A6 (optional) — Ingest additional libraries**
+
+```bash
+uv run python -m ingest.run --library pydantic
+```
+
+After restarting the app, the Library dropdown will show both "Fastapi" and "Pydantic".
+
 **Expected app behavior:**
 
 | Scenario | What Happens |
@@ -298,7 +309,9 @@ How do I add validation to request body?
 | Thumbs up/down | "Feedback saved!" — row inserted in PostgreSQL `feedback` table |
 | Sidebar history | Last 50 Q&As, reversed (most recent first) |
 | Clear History | Sidebar empties, page refreshes |
-| Same question twice | Both answers appear in history (no cache) |
+| Library dropdown | Select "FastAPI" or "Pydantic" (after ingestion) — answers come from the selected docs |
+| Same question twice | Second answer appears instantly from cache (cached: true) |
+| Answer rendering | Text appears token-by-token via streaming (no wait for full response) |
 
 **Expected Grafana panels** (after 5+ queries):
 
@@ -345,7 +358,7 @@ streamlit run app/main.py
 
 Open http://localhost:8501.
 
-**Difference from Option A:** The app works identically for Q&A, but conversation saving and feedback display "PostgreSQL not available" messages. The core search + RAG flow is unaffected.
+**Difference from Option A:** The app works identically for Q&A, but conversation saving and feedback display "PostgreSQL not available" messages. The core search, streaming, caching, and multi-library features are unaffected.
 
 **Step B3 (optional) — Add PostgreSQL manually**
 
@@ -396,7 +409,7 @@ Index built
 ### Final Step: Run Tests
 
 ```bash
-# All unit tests (120 pass)
+# All unit tests (132 pass)
 uv run python -m pytest -m "not integration" -v
 
 # Include integration tests (requires PostgreSQL + Grafana running)
@@ -405,7 +418,7 @@ uv run python -m pytest -v
 
 **Expected:**
 ```
-120 passed, 4 deselected, 2 warnings in ~14s
+132 passed, 6 deselected, 2 warnings in ~14s
 ```
 
 ---
@@ -488,6 +501,34 @@ An optional `method="llm"` mode uses GPT-4o-mini to rewrite the query for maximu
 
 **Why cross-encoder:** More accurate than bi-encoder cosine similarity because it processes query and chunk together through a transformer, rather than encoding them independently.
 
+### 4. Multi-Library Support (+1 pt)
+
+**What it does:** The library dropdown dynamically discovers installed documentation sets from `data/processed/*/`. Switch between FastAPI, Pydantic, or any other ingested library — search and answers use the corresponding index.
+
+**Where:** `app/main.py` — `get_available_libraries()`, `app/search.py` — `library` param on all search functions, `ingest/run.py` — `SITEMAP_MAP` includes pydantic
+
+**Usage:**
+```bash
+uv run python -m ingest.run --library pydantic   # ingest Pydantic docs
+# Restart the app — dropdown now shows both "FastAPI" and "Pydantic"
+```
+
+### 5. Streaming LLM Responses (+1 pt)
+
+**What it does:** Answers render token-by-token as the LLM generates them, instead of appearing all at once. Uses OpenAI's streaming API via `stream=True`.
+
+**Where:** `app/llm.py` — `llm_stream()`, `app/rag.py` — `rag_stream()`, `app/main.py` — `st.write_stream()`
+
+**Why streaming:** Improves perceived responsiveness — users see the first tokens in ~1s instead of waiting 5-10s for the full answer.
+
+### 6. Response Caching (+1 pt)
+
+**What it does:** Repeated identical queries skip search + LLM call and return the cached result instantly. Cache key is `(query, library, model)`, stored in a module-level dict (max 128 entries).
+
+**Where:** `app/rag.py` — `_rag_cache` dict, `_RAG_CACHE_MAXSIZE`
+
+**How to verify:** Ask the same question twice. The second response includes `cached: True` in the result metadata and completes in <1ms (vs 5-10s for a fresh LLM call).
+
 ---
 
 ## Scoring Checklist
@@ -506,7 +547,10 @@ An optional `method="llm"` mode uses GPT-4o-mini to rewrite the query for maximu
 | Hybrid search (bonus) | +1 | `app/search.py` — separate keyword/vector/hybrid functions, RRF fusion | Eval shows hybrid HR (0.660) > keyword (0.600) > vector (0.420) |
 | Reranking (bonus) | +1 | `app/search.py` — `rerank()` with cross-encoder | Test: `pytest tests/test_bonus_reranking.py -v` |
 | Query rewriting (bonus) | +1 | `app/search.py` — `rewrite_query()` abbreviation expansion | Test: `pytest tests/test_bonus_query_rewrite.py -v` |
-| **Total** | **21** | | |
+| Multi-library (bonus) | +1 | `app/search.py` library param, `app/main.py` dynamic dropdown, `ingest/run.py` pydantic | Test: `pytest tests/test_bonus_multi_library.py -v` |
+| Streaming (bonus) | +1 | `app/llm.py` `llm_stream()`, `app/rag.py` `rag_stream()` | Test: `pytest tests/test_bonus_streaming.py -v` |
+| Response caching (bonus) | +1 | `app/rag.py` `_rag_cache` | Test: `pytest tests/test_bonus_caching.py -v` |
+| **Total** | **24** | | |
 
 ---
 
@@ -528,9 +572,7 @@ An optional `method="llm"` mode uses GPT-4o-mini to rewrite the query for maximu
 
 2. **Larger evaluation set.** Current results are based on 50 ground truth pairs for retrieval and only 3 questions for LLM evaluation. A production-grade evaluation would need 200+ ground truth pairs and 50+ LLM test questions with a held-out judge model to avoid self-preference bias.
 
-3. **Multi-library support.** The pipeline is designed to support multiple libraries (Pydantic, Requests, SQLAlchemy), but the UI currently only lists FastAPI. Library discovery and switching are ready in the data pipeline.
-
-4. **LLM-as-judge bias.** The current judge (gpt-4o-mini) shows signs of self-preference bias. Using a different model as judge (e.g., gpt-4o to evaluate gpt-4o-mini outputs) would produce more reliable relevance scores.
+3. **LLM-as-judge bias.** The current judge (gpt-4o-mini) shows signs of self-preference bias. Using a different model as judge (e.g., gpt-4o to evaluate gpt-4o-mini outputs) would produce more reliable relevance scores.
 
 ---
 

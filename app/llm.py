@@ -1,6 +1,5 @@
 """OpenAI LLM wrapper."""
 
-import os
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -33,6 +32,18 @@ def llm(prompt: str, model: str = "gpt-4o-mini") -> tuple[str, dict]:
         "total_tokens": response.usage.total_tokens,
     }
     return response.output_text, tokens
+
+
+def llm_stream(prompt: str, model: str = "gpt-4o-mini"):
+    client = _get_client()
+    stream = client.responses.create(
+        model=model,
+        input=[{"role": "user", "content": prompt}],
+        stream=True
+    )
+    for event in stream:
+        if event.type == "response.output_text.delta":
+            yield event.delta
 
 
 def calculate_cost(model: str, tokens: dict) -> float:
